@@ -1,6 +1,8 @@
 const int sensorPin = 2;
 const int valvePin = 8;
 
+const int BLOCKED_STATE = HIGH;  // change to LOW if your IR sensor is inverted
+
 const unsigned long PULSE_MS = 50;
 
 bool armed = false;
@@ -10,8 +12,16 @@ bool valveActive = false;
 unsigned long valveStartTime = 0;
 
 bool isBeamBlocked() {
-  int state = digitalRead(sensorPin);
-  return state == HIGH;  // change to LOW if your sensor is inverted
+  return digitalRead(sensorPin) == BLOCKED_STATE;
+}
+
+void logEvent(const char* eventName, int pinNumber) {
+  Serial.print("EVENT,");
+  Serial.print(millis());
+  Serial.print(",");
+  Serial.print(eventName);
+  Serial.print(",");
+  Serial.println(pinNumber);
 }
 
 void setup() {
@@ -24,7 +34,7 @@ void setup() {
 
   previousBlocked = isBeamBlocked();
 
-  Serial.println("Arduino ready");
+  Serial.println("READY");
 }
 
 void loop() {
@@ -37,34 +47,35 @@ void loop() {
     char command = Serial.read();
 
     if (command == 'a') {
-      // Arm reward delivery.
-      // This version waits for a NEW beam break after arming.
       armed = true;
-      previousBlocked = blocked;
-
-      Serial.println("ARMED");
+      previousBlocked = blocked;  // require a new beam break after arming
+      logEvent("ARMED", -1);
     }
 
     if (command == '0') {
       armed = false;
       valveActive = false;
       digitalWrite(valvePin, LOW);
-
-      Serial.println("DISARMED");
+      logEvent("DISARMED", -1);
     }
   }
 
   bool newBeamBreak = blocked && !previousBlocked;
 
-  // If armed, one new beam break gives one reward
-  if (armed && newBeamBreak) {
-    Serial.println("Beam blocked: reward");
+  // Log every new IR activation, even if reward is suppressed
+  if (newBeamBreak) {
+    logEvent("IR_TRIGGER", sensorPin);
+  }
 
+  // If armed, one new beam break gives one valve pulse
+  if (armed && newBeamBreak) {
     digitalWrite(valvePin, HIGH);
     valveActive = true;
     valveStartTime = now;
 
-    // Suppress further rewards until space is pressed again
+    logEvent("VALVE_ON", valvePin);
+
+    // Suppress until space is pressed again
     armed = false;
   }
 
@@ -73,7 +84,7 @@ void loop() {
     digitalWrite(valvePin, LOW);
     valveActive = false;
 
-    Serial.println("Valve off");
+    logEvent("VALVE_OFF", valvePin);
   }
 
   previousBlocked = blocked;
