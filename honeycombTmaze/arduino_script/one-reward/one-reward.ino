@@ -1,3 +1,4 @@
+
 const byte SOLENOID_PIN = 8;
 
 const unsigned long PULSE_MS = 50;
