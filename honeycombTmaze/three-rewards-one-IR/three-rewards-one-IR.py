@@ -1,19 +1,16 @@
 """three-rewards.py
 
-Manual keyboard + logging front-end for a three-reward Arduino controller.
+Keyboard + logging front-end for three-reward Arduino controller.
 
 Behavior:
-    space : pulse the current target immediately, then advance the sequence
+    space : arm the next IR-triggered reward
     L     : overwrite next target to DIGITAL 8
     C     : overwrite next target to DIGITAL 9
     R     : overwrite next target to DIGITAL 10
-    esc   : stop all valves, close serial port, and stop
+    esc   : disarm, close serial port, and stop
 
-Reward sequence:
-    DIG8 -> DIG9 -> DIG10 -> DIG9 -> DIG8 -> ...
-
-The Arduino owns the 50 ms pulse timing, target sequence, and valve event logs.
-Python only sends keyboard commands and writes Arduino-reported events to CSV.
+The Arduino owns the IR detection, 50 ms pulse timing, suppression state,
+and reward sequence. Python only sends commands and logs Arduino-reported events.
 """
 
 import csv
@@ -40,7 +37,7 @@ class ArduinoThreeRewardLogger:
 
         timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
         script_dir = Path(__file__).resolve().parent
-        self.log_path = script_dir / f"three_reward_manual_log_{timestamp}.csv"
+        self.log_path = script_dir / f"three_reward_log_{timestamp}.csv"
 
         self.running = True
         self.closed = False
@@ -63,7 +60,7 @@ class ArduinoThreeRewardLogger:
 
         print(f"Connected to Arduino on {port}")
         print(f"Logging to {self.log_path}")
-        print("Controls: space=pulse next, L=DIG8, C=DIG9, R=DIG10, esc=quit")
+        print("Controls: space=arm, L=DIG8, C=DIG9, R=DIG10, esc=quit")
 
     def write_log_row(self, arduino_millis, event, pin, raw_line=""):
         computer_time = datetime.now().isoformat(timespec="milliseconds")
@@ -118,9 +115,13 @@ class ArduinoThreeRewardLogger:
         if python_event is not None:
             self.log_python_event(python_event, pin)
 
-    def pulse_next_target(self):
-        self.send_command("p", "KEY_SPACE_PULSE_COMMAND", -1)
-        print("Space pressed: pulse current target")
+    def arm(self):
+        self.send_command("a", "SPACE_ARM_COMMAND", -1)
+        print("Reward armed: waiting for next IR beam break")
+
+    def disarm(self):
+        self.send_command("0", "DISARM_COMMAND", -1)
+        print("Reward disarmed")
 
     def set_next_target(self, target):
         if target == 8:
@@ -135,10 +136,6 @@ class ArduinoThreeRewardLogger:
         else:
             raise ValueError("target must be 8, 9, or 10")
 
-    def stop_all(self):
-        self.send_command("0", "KEY_STOP_COMMAND", -1)
-        print("Stop command sent")
-
     def close(self):
         if self.closed:
             return
@@ -146,10 +143,10 @@ class ArduinoThreeRewardLogger:
         self.closed = True
 
         try:
-            self.stop_all()
-            time.sleep(0.2)  # allow Arduino STOP/VALVE_OFF events to arrive
+            self.disarm()
+            time.sleep(0.2)  # allow Arduino DISARMED event to arrive
         except Exception as exc:
-            print(f"Error while stopping during close: {exc}")
+            print(f"Error while disarming during close: {exc}")
 
         self.running = False
         self.reader_thread.join(timeout=1)
@@ -171,7 +168,7 @@ def on_press(key):
 
     if key == keyboard.Key.space and not space_down:
         space_down = True
-        reward.pulse_next_target()
+        reward.arm()
         return
 
     if key == keyboard.Key.esc:
