@@ -28,7 +28,7 @@ const byte VALVE_10_PIN = 10;
 const byte VALVE_PINS[] = {VALVE_8_PIN, VALVE_9_PIN, VALVE_10_PIN};
 const byte NUM_VALVES = sizeof(VALVE_PINS) / sizeof(VALVE_PINS[0]);
 
-const unsigned long PULSE_MS = 50;
+const unsigned long PULSE_MS = 150;
 
 // Repeating target sequence:
 // DIG8 -> DIG9 -> DIG10 -> DIG9 -> DIG8 -> ...
